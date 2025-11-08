@@ -30,7 +30,7 @@ class KavenegarAPI(object):
         "charset": "utf-8",
     }
 
-    def __init__(self, apikey, timeout=None, proxies=None ,pool_connections=10, pool_maxsize=10):
+    def __init__(self, apikey, timeout=None, proxies=None ,pool_connections=10, pool_maxsize=20, pool_block=True):
         """
         :param str apikey: Kavengera API Key
         :param int timeout: request timeout, default is 10
@@ -52,7 +52,7 @@ class KavenegarAPI(object):
         adapter = requests.adapters.HTTPAdapter(
             pool_connections=pool_connections,
             pool_maxsize=pool_maxsize,
-            pool_block=False
+            pool_block=pool_block
         )
 
 

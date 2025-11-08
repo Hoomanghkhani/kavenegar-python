@@ -44,11 +44,13 @@ def test_verify_lookup(api):
 @pytest.mark.integration
 def test_sms_send(api):
     receptor = os.getenv("KAVENEGAR_TEST_PHONE")
+    sender = os.getenv("KAVENEGAR_SENDER_LINE_NUMBER")
     if not receptor:
         pytest.skip("KAVENEGAR_TEST_PHONE not set, skipping sms_send test")
 
     params = {
         "receptor": receptor,
+        "sender": sender,
         "message": "تست ارسال پیام 🚀"
     }
 
