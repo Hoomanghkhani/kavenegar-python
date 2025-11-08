@@ -30,7 +30,7 @@ class KavenegarAPI(object):
         "charset": "utf-8",
     }
 
-    def __init__(self, apikey, timeout=None, proxies=None):
+    def __init__(self, apikey, timeout=None, proxies=None ,pool_connections=10, pool_maxsize=10):
         """
         :param str apikey: Kavengera API Key
         :param int timeout: request timeout, default is 10
@@ -39,11 +39,25 @@ class KavenegarAPI(object):
                 'http': 'http://192.168.1.10:3128',
                 'https': 'http://192.168.1.10:3129',
             }
+        :param int pool_connections: number of connection pools (urllib3)
+        :param int pool_maxsize: max connections per pool
         """
         self.apikey = apikey
         self.apikey_mask = f"{apikey[:2]}********{apikey[-2:]}"
         self.timeout = timeout or DEFAULT_TIMEOUT
         self.proxies = proxies
+
+        self.session = requests.Session()
+
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=pool_connections,
+            pool_maxsize=pool_maxsize,
+            pool_block=False
+        )
+
+
+        self.session.mount('https://', adapter)
+        self.session.headers.update(self.headers)
 
     def __repr__(self):
         return "kavenegar.KavenegarAPI({!r})".format(self.apikey_mask)
@@ -51,20 +65,12 @@ class KavenegarAPI(object):
     def __str__(self):
         return "kavenegar.KavenegarAPI({!s})".format(self.apikey_mask)
 
+    def close(self):
+        """Close all pooled connections"""
+        self.session.close()
+        
     def _pars_params_to_json(self, params):
-        """
-        Kavenegar bug, the api server expects the parameters in a JSON-like array format,
-        but the requests library form-encode each key-value pair
-
-        Params (dict):
-        { sender: ["30002626", "30002627", "30002727", ], }
-
-        request behavior:
-        sender=30002626&sender=30002627&sender=30002727
-
-        Server expectation:
-        sender=["30002626","30002627","30002727"]
-        """
+       
         # Convert lists to JSON-like strings
         formatted_params = {}
         for key, value in params.items():
@@ -79,17 +85,26 @@ class KavenegarAPI(object):
             params = {}
         if isinstance(params, dict):
             params = self._pars_params_to_json(params)
-        url = "https://{}/{}/{}/{}/{}.json".format(self.host, self.version, self.apikey, action, method)
+        url = f"https://{self.host}/{self.version}/{self.apikey}/{action}/{method}.json"
         try:
-            content = requests.post(url, headers=self.headers, auth=None, data=params, timeout=self.timeout, proxies=self.proxies, ).content
+            response = self.session.post(
+                url,
+                headers=self.headers,    
+                auth=None,
+                data=params,
+                timeout=self.timeout,
+                proxies=self.proxies,
+            )
+            response.raise_for_status()  # Raises HTTPError for 4xx/5xx
+
             try:
-                response = json.loads(content.decode("utf-8"))
-                if (response['return']['status'] == 200):
-                    return response['entries']
+                json_response = response.json()
+                if (json_response['return']['status'] == 200):
+                    return json_response['entries']
                 else:
-                    raise APIException('APIException[{}] {}'.format(response['return']['status'], response['return']['message']))
+                    raise APIException('APIException[{}] {}'.format(json_response['return']['status'], json_response['return']['message']))
             except ValueError as e:
-                raise HTTPException(e)
+                raise HTTPException(f"Invalid JSON response: {e}")
         except requests.exceptions.RequestException as e:
             message = str(e).replace(self.apikey, self.apikey_mask)
             raise HTTPException(message) from None
